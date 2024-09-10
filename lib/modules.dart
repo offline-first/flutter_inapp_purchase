@@ -114,7 +114,6 @@ class IAPItem {
         'title: $title, '
         'description: $description, '
         'introductoryPrice: $introductoryPrice, '
-        'introductoryPricePaymentModeIOS: $introductoryPrice, '
         'subscriptionPeriodNumberIOS: $subscriptionPeriodNumberIOS, '
         'subscriptionPeriodUnitIOS: $subscriptionPeriodUnitIOS, '
         'introductoryPricePaymentModeIOS: $introductoryPricePaymentModeIOS, '
@@ -167,9 +166,11 @@ class SubscriptionOfferAndroid {
   final String offerToken;
   final List<String> offerTags;
   final List<PricingPhaseAndroid>? pricingPhases;
+  final Map<String, dynamic> json;
 
   SubscriptionOfferAndroid.fromJSON(Map<String, dynamic> json)
-      : offerId = json["offerId"] as String?,
+      : this.json = json,
+        offerId = json["offerId"] as String?,
         basePlanId = json["basePlanId"] as String,
         offerToken = json["offerToken"] as String,
         offerTags =

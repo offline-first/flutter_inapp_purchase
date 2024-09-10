@@ -40,6 +40,8 @@ int periodToDays(String period) {
   var days = -1;
   if (period == 'P1W') {
     days = 7;
+  } else if (period == 'P3D') {
+    days = 3;
   } else if (period == 'P1M') {
     days = 30;
   } else if (period == 'P3M') {

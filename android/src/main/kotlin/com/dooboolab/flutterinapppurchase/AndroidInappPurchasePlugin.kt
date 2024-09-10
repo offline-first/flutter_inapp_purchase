@@ -431,7 +431,6 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
                         item.put("localizedPrice", it.formattedPrice)
                     }
 
-
                     // These generalized values are derived from the first pricing object, mainly for backwards compatibility
                     // It would be better to use the actual objects in PricingPhases and SubscriptionOffers
 
