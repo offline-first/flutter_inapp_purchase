@@ -10,9 +10,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  http: ^1.2.1
+  http: ^1.2.2
   #meta: ^1.15.0
-  platform: ^3.1.5
+  platform: ^3.1.6
 
 dev_dependencies:
   flutter_test:
@@ -22,7 +22,7 @@ dev_dependencies:
 
 dependency_overrides:
   test_api: ^0.7.3
-  meta: ^1.15.0
+  meta: ^1.16.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://www.dartlang.org/tools/pub/pubspec

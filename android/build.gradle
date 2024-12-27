@@ -2,7 +2,6 @@ group 'com.dooboolab.flutterinapppurchase'
 version '1.0-SNAPSHOT'
 
 buildscript {
-    //ext.kotlin_version = '1.8.10'
     ext.kotlin_version = '1.9.0'
     repositories {
         google()
@@ -10,8 +9,7 @@ buildscript {
     }
 
     dependencies {
-        //classpath 'com.android.tools.build:gradle:7.4.2'
-        classpath 'com.android.tools.build:gradle:8.2.0'
+        classpath 'com.android.tools.build:gradle:8.2.2'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
@@ -43,12 +41,12 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
+    kotlin {
+        jvmToolchain(21)
     }
 
 }
@@ -56,6 +54,6 @@ android {
 dependencies {
     implementation 'com.android.billingclient:billing:6.0.1'
     implementation files('jars/in-app-purchasing-2.0.76.jar')
-    implementation 'androidx.annotation:annotation:1.7.1'
+    implementation 'androidx.annotation:annotation:1.9.1'
 }
 

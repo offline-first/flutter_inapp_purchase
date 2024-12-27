@@ -193,7 +193,7 @@ class _InAppState extends State<InApp> {
 
   @override
   Widget build(BuildContext context) {
-    double screenWidth = MediaQuery.of(context).size.width-20;
+    double screenWidth = MediaQuery.sizeOf(context).width-20;
     double buttonWidth=(screenWidth/3)-20;
 
     return Container(
