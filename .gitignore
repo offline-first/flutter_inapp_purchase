@@ -16,3 +16,6 @@ launch.json
 .flutter-plugins-*
 
 coverage
+
+# FVM Version Cache
+.fvm/

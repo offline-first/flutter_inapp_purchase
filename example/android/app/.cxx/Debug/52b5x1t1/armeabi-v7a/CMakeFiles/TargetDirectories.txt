@@ -1,0 +1,2 @@
+/Users/arian/dev/GitHub/flutter_inapp_purchase/example/android/app/.cxx/Debug/52b5x1t1/armeabi-v7a/CMakeFiles/edit_cache.dir
+/Users/arian/dev/GitHub/flutter_inapp_purchase/example/android/app/.cxx/Debug/52b5x1t1/armeabi-v7a/CMakeFiles/rebuild_cache.dir

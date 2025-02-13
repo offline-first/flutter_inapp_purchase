@@ -15,7 +15,6 @@ void main() {
         setUp(() {
           FlutterInappPurchase(FlutterInappPurchase.private(
               FakePlatform(operatingSystem: "android")));
-
           FlutterInappPurchase.channel
               .setMockMethodCallHandler((MethodCall methodCall) async {
             log.add(methodCall);

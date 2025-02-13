@@ -204,14 +204,14 @@ class FlutterInappPurchase {
       final dynamic getInappPurchaseHistory = await _channel.invokeMethod(
         'getPurchaseHistoryByType',
         <String, dynamic>{
-          'type': describeEnum(_TypeInApp.inapp),
+          'type': _TypeInApp.inapp.name,
         },
       );
 
       final dynamic getSubsPurchaseHistory = await _channel.invokeMethod(
         'getPurchaseHistoryByType',
         <String, dynamic>{
-          'type': describeEnum(_TypeInApp.subs),
+          'type': _TypeInApp.subs.name,
         },
       );
 
@@ -243,14 +243,14 @@ class FlutterInappPurchase {
       dynamic result1 = await _channel.invokeMethod(
         'getAvailableItemsByType',
         <String, dynamic>{
-          'type': describeEnum(_TypeInApp.inapp),
+          'type': _TypeInApp.inapp.name,
         },
       );
 
       dynamic result2 = await _channel.invokeMethod(
         'getAvailableItemsByType',
         <String, dynamic>{
-          'type': describeEnum(_TypeInApp.subs),
+          'type': _TypeInApp.subs.name,
         },
       );
       return extractPurchased(result1)! + extractPurchased(result2)!;
@@ -277,7 +277,7 @@ class FlutterInappPurchase {
       int? offerTokenIndex}) async {
     if (_platform.isAndroid) {
       return await _channel.invokeMethod('buyItemByType', <String, dynamic>{
-        'type': describeEnum(_TypeInApp.inapp),
+        'type': _TypeInApp.inapp.name,
         'productId': productId,
         'prorationMode': -1,
         'obfuscatedAccountId': obfuscatedAccountId,
@@ -314,7 +314,7 @@ class FlutterInappPurchase {
   }) async {
     if (_platform.isAndroid) {
       return await _channel.invokeMethod('buyItemByType', <String, dynamic>{
-        'type': describeEnum(_TypeInApp.subs),
+        'type': _TypeInApp.subs.name,
         'productId': productId,
         'prorationMode': prorationModeAndroid ?? -1,
         'obfuscatedAccountId': obfuscatedAccountIdAndroid,
@@ -328,7 +328,8 @@ class FlutterInappPurchase {
       });
     }
     throw PlatformException(
-        code: _platform.operatingSystem, message: "platform not supported");
+        code: _platform.operatingSystem,
+        message: "platform not supported");
   }
 
   /// Add Store Payment (iOS only)
