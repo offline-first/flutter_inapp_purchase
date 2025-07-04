@@ -9,7 +9,7 @@ buildscript {
     }
 
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.7.0'
+        classpath 'com.android.tools.build:gradle:8.7.3'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
@@ -23,6 +23,7 @@ allprojects {
 
 apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
+//apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
 
 android {
     namespace 'com.dooboolab.flutterinapppurchase'
@@ -51,7 +52,7 @@ android {
     }
 
     dependencies {
-        implementation 'com.android.billingclient:billing:6.0.1'
+        implementation 'com.android.billingclient:billing:7.1.1' //6.0.1
         implementation files('jars/in-app-purchasing-2.0.76.jar')
         implementation 'androidx.annotation:annotation:1.9.1'
     }

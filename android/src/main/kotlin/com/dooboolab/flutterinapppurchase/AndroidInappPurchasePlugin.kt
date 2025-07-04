@@ -18,6 +18,7 @@ import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
+import androidx.core.net.toUri
 
 /**
  * AndroidInappPurchasePlugin
@@ -141,7 +142,7 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
         if (isReady != true) {
             safeChannel.error(
                 call.method,
-                BillingError.E_NOT_PREPARED,
+                MyBillingError.E_NOT_PREPARED,
                 "IAP not prepared. Check if Google Play service is available."
             )
             return
@@ -163,11 +164,11 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
 
     private fun manageSubscription(sku: String, packageName: String): Boolean{
         val url = "$PLAY_STORE_URL?sku=${sku}&package=${packageName}"
-        return openWithFallback(Uri.parse(url))
+        return openWithFallback(url.toUri())
     }
 
     private fun openPlayStoreSubscriptions():Boolean{
-        return openWithFallback(Uri.parse(PLAY_STORE_URL))
+        return openWithFallback(PLAY_STORE_URL.toUri())
     }
 
     private fun openWithFallback(uri: Uri):Boolean{
@@ -292,7 +293,7 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
             .build()
         billingClient!!.consumeAsync(params, ConsumeResponseListener { billingResult, _ ->
             if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
-                val errorData = BillingError.getErrorFromResponseData(billingResult.responseCode)
+                val errorData = MyBillingError.getErrorFromResponseData(billingResult.responseCode)
                 safeChannel.error(call.method, errorData.code, errorData.message)
                 return@ConsumeResponseListener
             }
@@ -300,7 +301,7 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
                 val item = JSONObject()
                 item.put("responseCode", billingResult.responseCode)
                 item.put("debugMessage", billingResult.debugMessage)
-                val errorData = BillingError.getErrorFromResponseData(billingResult.responseCode)
+                val errorData = MyBillingError.getErrorFromResponseData(billingResult.responseCode)
                 item.put("code", errorData.code)
                 item.put("message", errorData.message)
                 safeChannel.success(item.toString())
@@ -308,7 +309,7 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
             } catch (je: JSONException) {
                 safeChannel.error(
                     TAG,
-                    BillingError.E_BILLING_RESPONSE_JSON_PARSE_ERROR,
+                    MyBillingError.E_BILLING_RESPONSE_JSON_PARSE_ERROR,
                     je.message
                 )
                 return@ConsumeResponseListener
@@ -328,7 +329,7 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
             acknowledgePurchaseParams,
             AcknowledgePurchaseResponseListener { billingResult ->
                 if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
-                    val errorData = BillingError.getErrorFromResponseData(billingResult.responseCode)
+                    val errorData = MyBillingError.getErrorFromResponseData(billingResult.responseCode)
                     safeChannel.error(call.method, errorData.code, errorData.message)
                     return@AcknowledgePurchaseResponseListener
                 }
@@ -336,7 +337,7 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
                     val item = JSONObject()
                     item.put("responseCode", billingResult.responseCode)
                     item.put("debugMessage", billingResult.debugMessage)
-                    val errorData = BillingError.getErrorFromResponseData(billingResult.responseCode)
+                    val errorData = MyBillingError.getErrorFromResponseData(billingResult.responseCode)
                     item.put("code", errorData.code)
                     item.put("message", errorData.message)
                     safeChannel.success(item.toString())
@@ -344,7 +345,7 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
                     je.printStackTrace()
                     safeChannel.error(
                         TAG,
-                        BillingError.E_BILLING_RESPONSE_JSON_PARSE_ERROR,
+                        MyBillingError.E_BILLING_RESPONSE_JSON_PARSE_ERROR,
                         je.message
                     )
                 }
@@ -358,11 +359,12 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
         val type = if(call.argument<String>("type") == "subs") BillingClient.ProductType.SUBS else BillingClient.ProductType.INAPP
         val params = QueryPurchaseHistoryParams.newBuilder().apply { setProductType(type) }.build()
 
+        //billingClient!!.queryPurchasesAsync() -> use this instead!
         billingClient!!.queryPurchaseHistoryAsync(
             params,
             PurchaseHistoryResponseListener { billingResult, purchaseHistoryRecordList ->
                 if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
-                    val errorData = BillingError.getErrorFromResponseData(billingResult.responseCode)
+                    val errorData = MyBillingError.getErrorFromResponseData(billingResult.responseCode)
                     safeChannel.error(call.method, errorData.code, errorData.message)
                     return@PurchaseHistoryResponseListener
                 }
@@ -382,7 +384,7 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
                     return@PurchaseHistoryResponseListener
                 } catch (je: JSONException) {
                     je.printStackTrace()
-                    safeChannel.error(TAG, BillingError.E_BILLING_RESPONSE_JSON_PARSE_ERROR, je.message)
+                    safeChannel.error(TAG, MyBillingError.E_BILLING_RESPONSE_JSON_PARSE_ERROR, je.message)
                 }
             })
     }
@@ -403,7 +405,7 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
         ) { billingResult, products ->
             // On error
             if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
-                val errorData = BillingError.getErrorFromResponseData(billingResult.responseCode)
+                val errorData = MyBillingError.getErrorFromResponseData(billingResult.responseCode)
                 safeChannel.error(call.method, errorData.code, errorData.message)
                 return@queryProductDetailsAsync
             }
@@ -482,7 +484,7 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
                 return@queryProductDetailsAsync
             } catch (je: JSONException) {
                 je.printStackTrace()
-                safeChannel.error(TAG, BillingError.E_BILLING_RESPONSE_JSON_PARSE_ERROR, je.message)
+                safeChannel.error(TAG, MyBillingError.E_BILLING_RESPONSE_JSON_PARSE_ERROR, je.message)
             } catch (fe: FlutterException) {
                 safeChannel.error(call.method, fe.message, fe.localizedMessage)
                 return@queryProductDetailsAsync
@@ -522,6 +524,8 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
             val productDetailsParamsBuilder = ProductDetailsParams.newBuilder().setProductDetails(selectedProductDetails)
             var offerToken : String? = null
 
+
+
             if (type == BillingClient.ProductType.SUBS) {
                 if (offerTokenIndex != null) {
                     offerToken = selectedProductDetails.subscriptionOfferDetails?.get(offerTokenIndex)?.offerToken
@@ -529,6 +533,10 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
                 if (offerToken == null) {
                     offerToken = selectedProductDetails.subscriptionOfferDetails!![0].offerToken
                 }
+
+                Log.d(TAG, "Using productId=${selectedProductDetails.productId}")
+                Log.d(TAG, "Using offerTokenIndex=${offerTokenIndex}")
+                Log.d(TAG, "Using offerToken=${offerToken}")
 
                 productDetailsParamsBuilder.setOfferToken(offerToken)
             }
@@ -545,35 +553,44 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
             if (obfuscatedProfileId != null) {
                 builder.setObfuscatedProfileId(obfuscatedProfileId)
             }
-
+            Log.d(TAG, "Using prorationMode=${prorationMode}")
             when (prorationMode) {
-                -1 -> {} //ignore
-                ProrationMode.IMMEDIATE_AND_CHARGE_PRORATED_PRICE -> {
-                    params.setReplaceProrationMode(ProrationMode.IMMEDIATE_AND_CHARGE_PRORATED_PRICE)
+                -1 -> {
+                    // ignore – kein ReplacementMode gesetzt
+                }
+
+                2 -> { // CHARGE_PRORATED_PRICE
                     if (type != BillingClient.ProductType.SUBS) {
                         safeChannel.error(
                             TAG,
                             "buyItemByType",
-                            "IMMEDIATE_AND_CHARGE_PRORATED_PRICE for proration mode only works in subscription purchase."
+                            "CHARGE_PRORATED_PRICE only works for subscription purchases."
                         )
                         return
                     }
+                    params.setSubscriptionReplacementMode(SubscriptionUpdateParams.ReplacementMode.CHARGE_PRORATED_PRICE)
                 }
-                ProrationMode.IMMEDIATE_WITHOUT_PRORATION,
-                ProrationMode.DEFERRED,
-                ProrationMode.IMMEDIATE_WITH_TIME_PRORATION,
-                ProrationMode.IMMEDIATE_AND_CHARGE_FULL_PRICE ->
-                    params.setReplaceProrationMode(prorationMode)
-                else -> params.setReplaceProrationMode(ProrationMode.UNKNOWN_SUBSCRIPTION_UPGRADE_DOWNGRADE_POLICY)
-            }
 
+                3 -> params.setSubscriptionReplacementMode(SubscriptionUpdateParams.ReplacementMode.WITHOUT_PRORATION)
+
+                6 -> params.setSubscriptionReplacementMode(SubscriptionUpdateParams.ReplacementMode.DEFERRED)
+
+                1 -> params.setSubscriptionReplacementMode(SubscriptionUpdateParams.ReplacementMode.WITH_TIME_PRORATION)
+
+                5 -> params.setSubscriptionReplacementMode(SubscriptionUpdateParams.ReplacementMode.CHARGE_FULL_PRICE)
+
+                else -> params.setSubscriptionReplacementMode(SubscriptionUpdateParams.ReplacementMode.UNKNOWN_REPLACEMENT_MODE)
+            }
+            Log.d(TAG, "Using purchaseToken=${purchaseToken}")
             if (purchaseToken != null) {
                 params.setOldPurchaseToken(purchaseToken)
                 builder.setSubscriptionUpdateParams(params.build())
             }
-            if (activity != null) {
-                billingClient!!.launchBillingFlow(activity!!, builder.build())
 
+            if (activity != null && billingClient != null) {
+                billingClient!!.launchBillingFlow(activity!!, builder.build())
+            } else {
+                safeChannel.error(TAG, "buyItemByType", "Activity or BillingClient is null.")
             }
         } catch (e: Exception) {
             safeChannel.error(TAG, "buyItemByType", e.message)
@@ -587,7 +604,7 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
                 val json = JSONObject()
                 json.put("responseCode", billingResult.responseCode)
                 json.put("debugMessage", billingResult.debugMessage)
-                val errorData = BillingError.getErrorFromResponseData(billingResult.responseCode)
+                val errorData = MyBillingError.getErrorFromResponseData(billingResult.responseCode)
                 json.put("code", errorData.code)
                 json.put("message", errorData.message)
                 safeResult!!.invokeMethod("purchase-error", json.toString())
@@ -607,7 +624,7 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
                     item.put("autoRenewingAndroid", purchase.isAutoRenewing)
                     item.put("isAcknowledgedAndroid", purchase.isAcknowledged)
                     item.put("packageNameAndroid", purchase.packageName)
-                    item.put("developerPayloadAndroid", purchase.developerPayload)
+
                     val accountIdentifiers = purchase.accountIdentifiers
                     if (accountIdentifiers != null) {
                         item.put("obfuscatedAccountIdAndroid", accountIdentifiers.obfuscatedAccountId)
@@ -620,7 +637,7 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
                 val json = JSONObject()
                 json.put("responseCode", billingResult.responseCode)
                 json.put("debugMessage", billingResult.debugMessage)
-                val errorData = BillingError.getErrorFromResponseData(billingResult.responseCode)
+                val errorData = MyBillingError.getErrorFromResponseData(billingResult.responseCode)
                 json.put("code", errorData.code)
                 json.put("message", "purchases returns null.")
                 safeResult!!.invokeMethod("purchase-error", json.toString())

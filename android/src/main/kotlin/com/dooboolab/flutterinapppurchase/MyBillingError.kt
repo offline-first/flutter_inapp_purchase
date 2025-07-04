@@ -3,7 +3,7 @@ package com.dooboolab.flutterinapppurchase
 import android.util.Log
 import com.android.billingclient.api.BillingClient.BillingResponseCode
 
-class BillingError {
+class MyBillingError {
     companion object {
         private const val TAG = "DoobooUtils"
         private const val E_UNKNOWN = "E_UNKNOWN"
