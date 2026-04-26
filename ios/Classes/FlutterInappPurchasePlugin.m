@@ -9,6 +9,7 @@
 }
 
 @property (atomic, retain) NSMutableDictionary<NSValue*, FlutterResult>* fetchProducts;
+@property (atomic, retain) NSMutableDictionary<NSValue*, SKProductsRequest*>* activeProductRequests;
 @property (atomic, retain) NSMutableDictionary<SKPayment*, FlutterResult>* requestedPayments;
 @property (atomic, retain) NSArray<SKProduct*>* products;
 @property (atomic, retain) NSMutableArray<SKProduct*>* appStoreInitiatedProducts;
@@ -20,6 +21,7 @@
 @implementation FlutterInappPurchasePlugin
 
 @synthesize fetchProducts;
+@synthesize activeProductRequests;
 @synthesize requestedPayments;
 @synthesize products;
 @synthesize appStoreInitiatedProducts;
@@ -37,6 +39,7 @@
 - (instancetype)init {
     self = [super init];
     self.fetchProducts = [[NSMutableDictionary alloc] init];
+    self.activeProductRequests = [[NSMutableDictionary alloc] init];
     self.requestedPayments = [[NSMutableDictionary alloc] init];
     self.products = [[NSArray alloc] init];
     self.appStoreInitiatedProducts = [[NSMutableArray alloc] init];
@@ -259,8 +262,10 @@
 - (void)fetchProducts:(NSArray<NSString*>*)identifiers result:(FlutterResult)result {
     if (identifiers != nil && result != nil) {
         SKProductsRequest* request = [[SKProductsRequest alloc] initWithProductIdentifiers:[NSSet setWithArray:identifiers]];
+        NSValue* key = [NSValue valueWithNonretainedObject:request];
         [request setDelegate:self];
-        [fetchProducts setObject:result forKey:[NSValue valueWithNonretainedObject:request]];
+        [fetchProducts setObject:result forKey:key];
+        [activeProductRequests setObject:request forKey:key];
 
         [request start];
     } else if (result != nil){
@@ -278,6 +283,7 @@
     FlutterResult result = [fetchProducts objectForKey:key];
     if (result != nil) {
         [fetchProducts removeObjectForKey:key];
+        [activeProductRequests removeObjectForKey:key];
         result([FlutterError
                 errorWithCode:[self standardErrorCode:(int)error.code]
                 message:[self englishErrorCodeDescription:(int)error.code]
@@ -291,6 +297,7 @@
         FlutterResult result = [self.fetchProducts objectForKey:key];
         if (result == nil) return;
         [self.fetchProducts removeObjectForKey:key];
+        [self.activeProductRequests removeObjectForKey:key];
 
         for (SKProduct* prod in response.products) {
             [self addProduct:prod];
