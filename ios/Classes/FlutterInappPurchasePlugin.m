@@ -1,7 +1,6 @@
 #import "FlutterInappPurchasePlugin.h"
 
 #import <IAPPromotionObserver.h>
-#import <flutter_inapp_purchase/flutter_inapp_purchase-Swift.h>
 
 @interface FlutterInappPurchasePlugin() {
     SKPaymentTransaction *currentTransaction;
@@ -94,7 +93,14 @@
             payment.applicationUsername = usernameHash;
             [[SKPaymentQueue defaultQueue] addPayment:payment];
         } else {
-            [self purchaseProductWithStoreKit2:identifier];
+            NSDictionary *err = [NSDictionary dictionaryWithObjectsAndKeys:
+                                 @"Invalid product ID.", @"debugMessage",
+                                 @"E_DEVELOPER_ERROR", @"code",
+                                 @"Invalid product ID.", @"message",
+                                 nil
+                                 ];
+            NSString* result = [self convertDicToJsonString:err];
+            [self.channel invokeMethod:@"purchase-error" arguments:result];
         }
     } else if ([@"requestProductWithOfferIOS" isEqualToString:call.method]) {
         NSString* sku = (NSString*)call.arguments[@"sku"];
@@ -214,26 +220,19 @@
     } else if ([@"finishTransaction" isEqualToString:call.method]) {
         NSString* transactionIdentifier = (NSString*)call.arguments[@"transactionIdentifier"];
         SKPaymentQueue *queue = [SKPaymentQueue defaultQueue];
-        BOOL didFinishStoreKit1Transaction = NO;
         for(SKPaymentTransaction *transaction in queue.transactions) {
             if([transaction.transactionIdentifier isEqualToString:transactionIdentifier]) {
                 [[SKPaymentQueue defaultQueue] finishTransaction:transaction];
-                didFinishStoreKit1Transaction = YES;
-                break;
             }
         }
-        if (!didFinishStoreKit1Transaction) {
-            if (@available(iOS 15.0, *)) {
-                [FIPStoreKit2Bridge finishTransactionWithIdentifier:transactionIdentifier completion:^(BOOL finished) {
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        [self finishTransactionResult:transactionIdentifier result:result];
-                    });
-                }];
-                return;
-            }
-        }
-
-        [self finishTransactionResult:transactionIdentifier result:result];
+        NSDictionary *err = [NSDictionary dictionaryWithObjectsAndKeys:
+                                @"finishTransaction", @"debugMessage",
+                                transactionIdentifier, @"code",
+                                @"finished", @"message",
+                                nil
+                                ];
+        NSString* strResult = [self convertDicToJsonString:err];
+        result(strResult);
     } else if ([@"clearTransaction" isEqualToString:call.method]) {
         NSArray *pendingTrans = [[SKPaymentQueue defaultQueue] transactions];
         NSLog(@"\n\n\n  ***  clear remaining Transactions. Call this before make a new transaction   \n\n.");
@@ -291,60 +290,6 @@
     }
 }
 
-- (void)finishTransactionResult:(NSString *)transactionIdentifier result:(FlutterResult)result {
-    NSDictionary *err = [NSDictionary dictionaryWithObjectsAndKeys:
-                            @"finishTransaction", @"debugMessage",
-                            transactionIdentifier ?: @"", @"code",
-                            @"finished", @"message",
-                            nil
-                            ];
-    NSString* strResult = [self convertDicToJsonString:err];
-    result(strResult);
-}
-
-- (void)purchaseProductWithStoreKit2:(NSString *)identifier {
-    if (@available(iOS 15.0, *)) {
-        [self emitDebugLog:[NSString stringWithFormat:@"[FlutterInappPurchase] trying StoreKit 2 purchase for %@", identifier]];
-        [FIPStoreKit2Bridge purchaseProductWithIdentifier:identifier completion:^(NSDictionary *purchase, NSDictionary *errorInfo) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                if (purchase != nil) {
-                    [self storeKit2PurchaseProcess:purchase];
-                    return;
-                }
-
-                NSDictionary *err = errorInfo ?: [NSDictionary dictionaryWithObjectsAndKeys:
-                                                  @"StoreKit 2 purchase failed.", @"debugMessage",
-                                                  @"E_SERVICE_ERROR", @"code",
-                                                  @"StoreKit 2 purchase failed.", @"message",
-                                                  nil];
-                NSString* result = [self convertDicToJsonString:err];
-                [self.channel invokeMethod:@"purchase-error" arguments:result];
-            });
-        }];
-        return;
-    }
-
-    NSDictionary *err = [NSDictionary dictionaryWithObjectsAndKeys:
-                         @"Invalid product ID.", @"debugMessage",
-                         @"E_DEVELOPER_ERROR", @"code",
-                         @"Invalid product ID.", @"message",
-                         nil
-                         ];
-    NSString* result = [self convertDicToJsonString:err];
-    [self.channel invokeMethod:@"purchase-error" arguments:result];
-}
-
-- (void)storeKit2PurchaseProcess:(NSDictionary *)transaction {
-    [self requestReceiptDataWithBlock:^(NSData *receiptData, NSError *error) {
-        NSMutableDictionary *purchase = [transaction mutableCopy];
-        if (receiptData != nil) {
-            purchase[@"transactionReceipt"] = [receiptData base64EncodedStringWithOptions:0];
-        }
-        NSString* result = [self convertDicToJsonString:purchase];
-        [self.channel invokeMethod:@"purchase-updated" arguments: result];
-    }];
-}
-
 - (void)startFetchProductsRequest:(NSArray<NSString*>*)identifiers result:(FlutterResult)result retryCount:(NSInteger)retryCount {
     SKProductsRequest* request = [[SKProductsRequest alloc] initWithProductIdentifiers:[NSSet setWithArray:identifiers]];
     NSValue* key = [NSValue valueWithNonretainedObject:request];
@@ -384,8 +329,9 @@
     [request cancel];
     [self clearFetchProductsRequestForKey:key];
 
-    if (identifiers != nil && retryCount == 0) {
-        [self fetchProductsWithStoreKit2:identifiers result:result fallbackRetryCount:retryCount + 1];
+    if (identifiers != nil && retryCount < 1) {
+        [self emitDebugLog:@"[FlutterInappPurchase] retrying products request"];
+        [self startFetchProductsRequest:identifiers result:result retryCount:retryCount + 1];
         return;
     }
 
@@ -396,36 +342,6 @@
                 @"attempts": @(retryCount + 1),
                 @"identifiers": identifiers ?: @[]
             }]);
-}
-
-- (void)fetchProductsWithStoreKit2:(NSArray<NSString*>*)identifiers result:(FlutterResult)result fallbackRetryCount:(NSInteger)retryCount {
-    if (@available(iOS 15.0, *)) {
-        [self emitDebugLog:@"[FlutterInappPurchase] trying StoreKit 2 products request"];
-        [FIPStoreKit2Bridge fetchProductsWithIdentifiers:identifiers completion:^(NSArray *items, NSError *error) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                if (items != nil) {
-                    [self emitDebugLog:[NSString stringWithFormat:@"[FlutterInappPurchase] StoreKit 2 products response: %lu valid",
-                                        (unsigned long)items.count]];
-                    result(items);
-                    return;
-                }
-
-                [self emitDebugLog:[NSString stringWithFormat:@"[FlutterInappPurchase] StoreKit 2 products request failed: %@", error]];
-                result([FlutterError
-                        errorWithCode:@"E_NETWORK_ERROR"
-                        message:@"Product request timed out."
-                        details:@{
-                            @"attempts": @(retryCount),
-                            @"identifiers": identifiers ?: @[],
-                            @"storeKit2Error": error.localizedDescription ?: @"unknown"
-                        }]);
-            });
-        }];
-        return;
-    }
-
-    [self emitDebugLog:@"[FlutterInappPurchase] retrying products request"];
-    [self startFetchProductsRequest:identifiers result:result retryCount:retryCount];
 }
 
 #pragma mark ===== StoreKit Delegate
