@@ -3,6 +3,8 @@ import StoreKit
 
 @objc(FIPStoreKit2Bridge)
 public final class FIPStoreKit2Bridge: NSObject {
+    private static let productsTimeoutSeconds: UInt64 = 20
+
     @available(iOS 15.0, *)
     private static var pendingTransactions: [String: Transaction] = [:]
 
@@ -18,7 +20,7 @@ public final class FIPStoreKit2Bridge: NSObject {
 
         Task {
             do {
-                let products = try await Product.products(for: identifiers)
+                let products = try await products(withIdentifiers: identifiers)
                 let items = products.map { productObject($0) } as NSArray
                 completion(items, nil)
             } catch {
@@ -43,7 +45,7 @@ public final class FIPStoreKit2Bridge: NSObject {
 
         Task {
             do {
-                let products = try await Product.products(for: [identifier])
+                let products = try await products(withIdentifiers: [identifier])
                 guard let product = products.first else {
                     completion(nil, errorObject(
                         code: "E_ITEM_UNAVAILABLE",
@@ -126,6 +128,31 @@ public final class FIPStoreKit2Bridge: NSObject {
             return value
         case .unverified(_, let error):
             throw error
+        }
+    }
+
+    @available(iOS 15.0, *)
+    private static func products(withIdentifiers identifiers: [String]) async throws -> [Product] {
+        try await withThrowingTaskGroup(of: [Product].self) { group in
+            group.addTask {
+                try await Product.products(for: identifiers)
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: productsTimeoutSeconds * 1_000_000_000)
+                throw NSError(
+                    domain: "FIPStoreKit2Bridge",
+                    code: -1001,
+                    userInfo: [NSLocalizedDescriptionKey: "StoreKit 2 product request timed out."]
+                )
+            }
+
+            guard let products = try await group.next() else {
+                group.cancelAll()
+                return []
+            }
+
+            group.cancelAll()
+            return products
         }
     }
 

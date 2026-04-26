@@ -411,8 +411,14 @@
                 }
 
                 [self emitDebugLog:[NSString stringWithFormat:@"[FlutterInappPurchase] StoreKit 2 products request failed: %@", error]];
-                [self emitDebugLog:@"[FlutterInappPurchase] retrying products request"];
-                [self startFetchProductsRequest:identifiers result:result retryCount:retryCount];
+                result([FlutterError
+                        errorWithCode:@"E_NETWORK_ERROR"
+                        message:@"Product request timed out."
+                        details:@{
+                            @"attempts": @(retryCount),
+                            @"identifiers": identifiers ?: @[],
+                            @"storeKit2Error": error.localizedDescription ?: @"unknown"
+                        }]);
             });
         }];
         return;
