@@ -260,6 +260,13 @@
 }
 
 - (void)fetchProducts:(NSArray<NSString*>*)identifiers result:(FlutterResult)result {
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self fetchProducts:identifiers result:result];
+        });
+        return;
+    }
+
     if (identifiers != nil && result != nil) {
         SKProductsRequest* request = [[SKProductsRequest alloc] initWithProductIdentifiers:[NSSet setWithArray:identifiers]];
         NSValue* key = [NSValue valueWithNonretainedObject:request];
@@ -267,7 +274,12 @@
         [fetchProducts setObject:result forKey:key];
         [activeProductRequests setObject:request forKey:key];
 
+        NSLog(@"[FlutterInappPurchase] starting products request for %lu identifiers: %@", (unsigned long)identifiers.count, identifiers);
         [request start];
+
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(10 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [self timeoutFetchProductsRequest:request];
+        });
     } else if (result != nil){
         result([FlutterError
                 errorWithCode:@"fetchProducts error"
@@ -276,19 +288,37 @@
     }
 }
 
+- (void)timeoutFetchProductsRequest:(SKProductsRequest *)request {
+    NSValue* key = [NSValue valueWithNonretainedObject:request];
+    FlutterResult result = [fetchProducts objectForKey:key];
+    if (result == nil) return;
+
+    NSLog(@"[FlutterInappPurchase] products request timed out");
+    [request cancel];
+    [fetchProducts removeObjectForKey:key];
+    [activeProductRequests removeObjectForKey:key];
+    result([FlutterError
+            errorWithCode:@"E_NETWORK_ERROR"
+            message:@"Product request timed out."
+            details:nil]);
+}
+
 #pragma mark ===== StoreKit Delegate
 
 - (void)request:(SKRequest *)request didFailWithError:(NSError *)error {
-    NSValue* key = [NSValue valueWithNonretainedObject:request];
-    FlutterResult result = [fetchProducts objectForKey:key];
-    if (result != nil) {
-        [fetchProducts removeObjectForKey:key];
-        [activeProductRequests removeObjectForKey:key];
-        result([FlutterError
-                errorWithCode:[self standardErrorCode:(int)error.code]
-                message:[self englishErrorCodeDescription:(int)error.code]
-                details:nil]);
-    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSValue* key = [NSValue valueWithNonretainedObject:request];
+        FlutterResult result = [self.fetchProducts objectForKey:key];
+        if (result != nil) {
+            NSLog(@"[FlutterInappPurchase] products request failed with error: %@", error);
+            [self.fetchProducts removeObjectForKey:key];
+            [self.activeProductRequests removeObjectForKey:key];
+            result([FlutterError
+                    errorWithCode:[self standardErrorCode:(int)error.code]
+                    message:[self englishErrorCodeDescription:(int)error.code]
+                    details:nil]);
+        }
+    });
 }
 
 - (void)productsRequest:(nonnull SKProductsRequest *)request didReceiveResponse:(nonnull SKProductsResponse *)response {
@@ -296,6 +326,9 @@
         NSValue* key = [NSValue valueWithNonretainedObject:request];
         FlutterResult result = [self.fetchProducts objectForKey:key];
         if (result == nil) return;
+        NSLog(@"[FlutterInappPurchase] products response: %lu valid, %lu invalid",
+              (unsigned long)response.products.count,
+              (unsigned long)response.invalidProductIdentifiers.count);
         [self.fetchProducts removeObjectForKey:key];
         [self.activeProductRequests removeObjectForKey:key];
 
@@ -747,6 +780,20 @@
 #pragma mark - SKRequestDelegate
 
 - (void)requestDidFinish:(SKRequest *)request {
+    if([request isKindOfClass:[SKProductsRequest class]]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSValue* key = [NSValue valueWithNonretainedObject:request];
+            FlutterResult result = [self.fetchProducts objectForKey:key];
+            if (result == nil) return;
+
+            NSLog(@"[FlutterInappPurchase] products request finished without response");
+            [self.fetchProducts removeObjectForKey:key];
+            [self.activeProductRequests removeObjectForKey:key];
+            result(@[]);
+        });
+        return;
+    }
+
     if([request isKindOfClass:[SKReceiptRefreshRequest class]]) {
         if ([self isReceiptPresent] == YES) {
             NSLog(@"Receipt refreshed success.");
