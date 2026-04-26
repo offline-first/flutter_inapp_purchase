@@ -265,6 +265,13 @@
     result(str);
 }
 
+- (void)emitDebugLog:(NSString *)message {
+    NSLog(@"%@", message);
+    if (self.channel != nil) {
+        [self.channel invokeMethod:@"iap-debug" arguments:message];
+    }
+}
+
 - (void)fetchProducts:(NSArray<NSString*>*)identifiers result:(FlutterResult)result {
     if (![NSThread isMainThread]) {
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -292,10 +299,10 @@
     [activeProductIdentifiers setObject:identifiers forKey:key];
     [activeProductRetryCounts setObject:@(retryCount) forKey:key];
 
-    NSLog(@"[FlutterInappPurchase] starting products request attempt %ld for %lu identifiers: %@",
-          (long)(retryCount + 1),
-          (unsigned long)identifiers.count,
-          identifiers);
+    [self emitDebugLog:[NSString stringWithFormat:@"[FlutterInappPurchase] starting products request attempt %ld for %lu identifiers: %@",
+                        (long)(retryCount + 1),
+                        (unsigned long)identifiers.count,
+                        identifiers]];
     [request start];
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(25 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -318,20 +325,23 @@
     NSArray<NSString*>* identifiers = [activeProductIdentifiers objectForKey:key];
     NSInteger retryCount = [[activeProductRetryCounts objectForKey:key] integerValue];
 
-    NSLog(@"[FlutterInappPurchase] products request attempt %ld timed out", (long)(retryCount + 1));
+    [self emitDebugLog:[NSString stringWithFormat:@"[FlutterInappPurchase] products request attempt %ld timed out", (long)(retryCount + 1)]];
     [request cancel];
     [self clearFetchProductsRequestForKey:key];
 
     if (identifiers != nil && retryCount < 1) {
-        NSLog(@"[FlutterInappPurchase] retrying products request");
+        [self emitDebugLog:@"[FlutterInappPurchase] retrying products request"];
         [self startFetchProductsRequest:identifiers result:result retryCount:retryCount + 1];
         return;
     }
 
     result([FlutterError
             errorWithCode:@"E_NETWORK_ERROR"
-            message:@"Product request timed out."
-            details:nil]);
+            message:@"Product request timed out after 2 attempts."
+            details:@{
+                @"attempts": @(retryCount + 1),
+                @"identifiers": identifiers ?: @[]
+            }]);
 }
 
 #pragma mark ===== StoreKit Delegate
@@ -341,7 +351,7 @@
         NSValue* key = [NSValue valueWithNonretainedObject:request];
         FlutterResult result = [self.fetchProducts objectForKey:key];
         if (result != nil) {
-            NSLog(@"[FlutterInappPurchase] products request failed with error: %@", error);
+            [self emitDebugLog:[NSString stringWithFormat:@"[FlutterInappPurchase] products request failed with error: %@", error]];
             [self clearFetchProductsRequestForKey:key];
             result([FlutterError
                     errorWithCode:[self standardErrorCode:(int)error.code]
@@ -356,9 +366,9 @@
         NSValue* key = [NSValue valueWithNonretainedObject:request];
         FlutterResult result = [self.fetchProducts objectForKey:key];
         if (result == nil) return;
-        NSLog(@"[FlutterInappPurchase] products response: %lu valid, %lu invalid",
-              (unsigned long)response.products.count,
-              (unsigned long)response.invalidProductIdentifiers.count);
+        [self emitDebugLog:[NSString stringWithFormat:@"[FlutterInappPurchase] products response: %lu valid, %lu invalid",
+                            (unsigned long)response.products.count,
+                            (unsigned long)response.invalidProductIdentifiers.count]];
         [self clearFetchProductsRequestForKey:key];
 
         for (SKProduct* prod in response.products) {
@@ -815,7 +825,7 @@
             FlutterResult result = [self.fetchProducts objectForKey:key];
             if (result == nil) return;
 
-            NSLog(@"[FlutterInappPurchase] products request finished without response");
+            [self emitDebugLog:@"[FlutterInappPurchase] products request finished without response"];
             [self clearFetchProductsRequestForKey:key];
             result(@[]);
         });

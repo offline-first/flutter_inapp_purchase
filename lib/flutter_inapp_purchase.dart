@@ -666,6 +666,9 @@ class FlutterInappPurchase {
           final int code = call.arguments;
           _onInAppMessageController?.add(code);
           break;
+        case "iap-debug":
+          debugPrint(call.arguments?.toString());
+          break;
         default:
           throw ArgumentError('Unknown method ${call.method}');
       }
