@@ -18,13 +18,12 @@ public final class FIPStoreKit2Bridge: NSObject {
             return
         }
 
-        Task {
-            do {
-                let products = try await products(withIdentifiers: identifiers)
+        requestProducts(withIdentifiers: identifiers) { products, error in
+            if let products {
                 let items = products.map { productObject($0) } as NSArray
                 completion(items, nil)
-            } catch {
-                completion(nil, error as NSError)
+            } else {
+                completion(nil, error)
             }
         }
     }
@@ -43,50 +42,69 @@ public final class FIPStoreKit2Bridge: NSObject {
             return
         }
 
-        Task {
-            do {
-                let products = try await products(withIdentifiers: [identifier])
-                guard let product = products.first else {
-                    completion(nil, errorObject(
-                        code: "E_ITEM_UNAVAILABLE",
-                        message: "Invalid product ID.",
-                        debugMessage: "StoreKit 2 product not found"
-                    ))
-                    return
-                }
-
-                let result = try await product.purchase()
-                switch result {
-                case .success(let verification):
-                    let transaction = try checkVerified(verification)
-                    let transactionId = String(transaction.id)
-                    pendingTransactions[transactionId] = transaction
-                    completion(transactionObject(transaction), nil)
-                case .userCancelled:
-                    completion(nil, errorObject(
-                        code: "E_USER_CANCELLED",
-                        message: "Payment Cancelled.",
-                        debugMessage: "StoreKit 2 user cancelled"
-                    ))
-                case .pending:
-                    completion(nil, errorObject(
-                        code: "E_USER_ERROR",
-                        message: "Purchase is pending approval.",
-                        debugMessage: "StoreKit 2 purchase pending"
-                    ))
-                @unknown default:
-                    completion(nil, errorObject(
-                        code: "E_UNKNOWN",
-                        message: "Unknown purchase result.",
-                        debugMessage: "StoreKit 2 unknown purchase result"
-                    ))
-                }
-            } catch {
+        requestProducts(withIdentifiers: [identifier]) { products, error in
+            guard error == nil else {
                 completion(nil, errorObject(
                     code: "E_SERVICE_ERROR",
-                    message: error.localizedDescription,
+                    message: error?.localizedDescription ?? "StoreKit 2 product request failed.",
                     debugMessage: String(describing: error)
                 ))
+                return
+            }
+
+            guard let products else {
+                completion(nil, errorObject(
+                    code: "E_SERVICE_ERROR",
+                    message: "StoreKit 2 product request failed.",
+                    debugMessage: "StoreKit 2 returned no result"
+                ))
+                return
+            }
+
+            Task {
+                do {
+                    guard let product = products.first else {
+                        completion(nil, errorObject(
+                            code: "E_ITEM_UNAVAILABLE",
+                            message: "Invalid product ID.",
+                            debugMessage: "StoreKit 2 product not found"
+                        ))
+                        return
+                    }
+
+                    let result = try await product.purchase()
+                    switch result {
+                    case .success(let verification):
+                        let transaction = try checkVerified(verification)
+                        let transactionId = String(transaction.id)
+                        pendingTransactions[transactionId] = transaction
+                        completion(transactionObject(transaction), nil)
+                    case .userCancelled:
+                        completion(nil, errorObject(
+                            code: "E_USER_CANCELLED",
+                            message: "Payment Cancelled.",
+                            debugMessage: "StoreKit 2 user cancelled"
+                        ))
+                    case .pending:
+                        completion(nil, errorObject(
+                            code: "E_USER_ERROR",
+                            message: "Purchase is pending approval.",
+                            debugMessage: "StoreKit 2 purchase pending"
+                        ))
+                    @unknown default:
+                        completion(nil, errorObject(
+                            code: "E_UNKNOWN",
+                            message: "Unknown purchase result.",
+                            debugMessage: "StoreKit 2 unknown purchase result"
+                        ))
+                    }
+                } catch {
+                    completion(nil, errorObject(
+                        code: "E_SERVICE_ERROR",
+                        message: error.localizedDescription,
+                        debugMessage: String(describing: error)
+                    ))
+                }
             }
         }
     }
@@ -132,27 +150,30 @@ public final class FIPStoreKit2Bridge: NSObject {
     }
 
     @available(iOS 15.0, *)
-    private static func products(withIdentifiers identifiers: [String]) async throws -> [Product] {
-        try await withThrowingTaskGroup(of: [Product].self) { group in
-            group.addTask {
-                try await Product.products(for: identifiers)
+    private static func requestProducts(
+        withIdentifiers identifiers: [String],
+        completion: @escaping ([Product]?, NSError?) -> Void
+    ) {
+        let state = CompletionState()
+        let productTask = Task {
+            do {
+                let products = try await Product.products(for: identifiers)
+                if state.finish() {
+                    completion(products, nil)
+                }
+            } catch {
+                if state.finish() {
+                    completion(nil, error as NSError)
+                }
             }
-            group.addTask {
-                try await Task.sleep(nanoseconds: productsTimeoutSeconds * 1_000_000_000)
-                throw NSError(
-                    domain: "FIPStoreKit2Bridge",
-                    code: -1001,
-                    userInfo: [NSLocalizedDescriptionKey: "StoreKit 2 product request timed out."]
-                )
-            }
+        }
 
-            guard let products = try await group.next() else {
-                group.cancelAll()
-                return []
+        Task {
+            try? await Task.sleep(nanoseconds: productsTimeoutSeconds * 1_000_000_000)
+            if state.finish() {
+                productTask.cancel()
+                completion(nil, timedOutError())
             }
-
-            group.cancelAll()
-            return products
         }
     }
 
@@ -266,6 +287,14 @@ public final class FIPStoreKit2Bridge: NSObject {
         )
     }
 
+    private static func timedOutError() -> NSError {
+        NSError(
+            domain: "FIPStoreKit2Bridge",
+            code: -1001,
+            userInfo: [NSLocalizedDescriptionKey: "StoreKit 2 product request timed out."]
+        )
+    }
+
     private static func errorObject(
         code: String,
         message: String,
@@ -276,5 +305,22 @@ public final class FIPStoreKit2Bridge: NSObject {
             "message": message,
             "debugMessage": debugMessage
         ] as NSDictionary
+    }
+}
+
+private final class CompletionState {
+    private let lock = NSLock()
+    private var completed = false
+
+    func finish() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+
+        if completed {
+            return false
+        }
+
+        completed = true
+        return true
     }
 }
