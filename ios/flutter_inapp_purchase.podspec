@@ -15,7 +15,7 @@ In App Purchase plugin for flutter. This project has been forked by react-native
   s.source_files = 'Classes/**/*'
   s.public_header_files = 'Classes/**/*.h'
   s.dependency 'Flutter'
+  s.swift_version = '5.0'
   
-  s.ios.deployment_target = '8.0'
+  s.ios.deployment_target = '15.0'
 end
-
