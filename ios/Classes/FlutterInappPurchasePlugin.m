@@ -10,6 +10,8 @@
 
 @property (atomic, retain) NSMutableDictionary<NSValue*, FlutterResult>* fetchProducts;
 @property (atomic, retain) NSMutableDictionary<NSValue*, SKProductsRequest*>* activeProductRequests;
+@property (atomic, retain) NSMutableDictionary<NSValue*, NSArray<NSString*>*>* activeProductIdentifiers;
+@property (atomic, retain) NSMutableDictionary<NSValue*, NSNumber*>* activeProductRetryCounts;
 @property (atomic, retain) NSMutableDictionary<SKPayment*, FlutterResult>* requestedPayments;
 @property (atomic, retain) NSArray<SKProduct*>* products;
 @property (atomic, retain) NSMutableArray<SKProduct*>* appStoreInitiatedProducts;
@@ -22,6 +24,8 @@
 
 @synthesize fetchProducts;
 @synthesize activeProductRequests;
+@synthesize activeProductIdentifiers;
+@synthesize activeProductRetryCounts;
 @synthesize requestedPayments;
 @synthesize products;
 @synthesize appStoreInitiatedProducts;
@@ -40,6 +44,8 @@
     self = [super init];
     self.fetchProducts = [[NSMutableDictionary alloc] init];
     self.activeProductRequests = [[NSMutableDictionary alloc] init];
+    self.activeProductIdentifiers = [[NSMutableDictionary alloc] init];
+    self.activeProductRetryCounts = [[NSMutableDictionary alloc] init];
     self.requestedPayments = [[NSMutableDictionary alloc] init];
     self.products = [[NSArray alloc] init];
     self.appStoreInitiatedProducts = [[NSMutableArray alloc] init];
@@ -268,18 +274,7 @@
     }
 
     if (identifiers != nil && result != nil) {
-        SKProductsRequest* request = [[SKProductsRequest alloc] initWithProductIdentifiers:[NSSet setWithArray:identifiers]];
-        NSValue* key = [NSValue valueWithNonretainedObject:request];
-        [request setDelegate:self];
-        [fetchProducts setObject:result forKey:key];
-        [activeProductRequests setObject:request forKey:key];
-
-        NSLog(@"[FlutterInappPurchase] starting products request for %lu identifiers: %@", (unsigned long)identifiers.count, identifiers);
-        [request start];
-
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(10 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [self timeoutFetchProductsRequest:request];
-        });
+        [self startFetchProductsRequest:identifiers result:result retryCount:0];
     } else if (result != nil){
         result([FlutterError
                 errorWithCode:@"fetchProducts error"
@@ -288,15 +283,51 @@
     }
 }
 
+- (void)startFetchProductsRequest:(NSArray<NSString*>*)identifiers result:(FlutterResult)result retryCount:(NSInteger)retryCount {
+    SKProductsRequest* request = [[SKProductsRequest alloc] initWithProductIdentifiers:[NSSet setWithArray:identifiers]];
+    NSValue* key = [NSValue valueWithNonretainedObject:request];
+    [request setDelegate:self];
+    [fetchProducts setObject:result forKey:key];
+    [activeProductRequests setObject:request forKey:key];
+    [activeProductIdentifiers setObject:identifiers forKey:key];
+    [activeProductRetryCounts setObject:@(retryCount) forKey:key];
+
+    NSLog(@"[FlutterInappPurchase] starting products request attempt %ld for %lu identifiers: %@",
+          (long)(retryCount + 1),
+          (unsigned long)identifiers.count,
+          identifiers);
+    [request start];
+
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(25 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [self timeoutFetchProductsRequest:request];
+    });
+}
+
+- (void)clearFetchProductsRequestForKey:(NSValue *)key {
+    [fetchProducts removeObjectForKey:key];
+    [activeProductRequests removeObjectForKey:key];
+    [activeProductIdentifiers removeObjectForKey:key];
+    [activeProductRetryCounts removeObjectForKey:key];
+}
+
 - (void)timeoutFetchProductsRequest:(SKProductsRequest *)request {
     NSValue* key = [NSValue valueWithNonretainedObject:request];
     FlutterResult result = [fetchProducts objectForKey:key];
     if (result == nil) return;
 
-    NSLog(@"[FlutterInappPurchase] products request timed out");
+    NSArray<NSString*>* identifiers = [activeProductIdentifiers objectForKey:key];
+    NSInteger retryCount = [[activeProductRetryCounts objectForKey:key] integerValue];
+
+    NSLog(@"[FlutterInappPurchase] products request attempt %ld timed out", (long)(retryCount + 1));
     [request cancel];
-    [fetchProducts removeObjectForKey:key];
-    [activeProductRequests removeObjectForKey:key];
+    [self clearFetchProductsRequestForKey:key];
+
+    if (identifiers != nil && retryCount < 1) {
+        NSLog(@"[FlutterInappPurchase] retrying products request");
+        [self startFetchProductsRequest:identifiers result:result retryCount:retryCount + 1];
+        return;
+    }
+
     result([FlutterError
             errorWithCode:@"E_NETWORK_ERROR"
             message:@"Product request timed out."
@@ -311,8 +342,7 @@
         FlutterResult result = [self.fetchProducts objectForKey:key];
         if (result != nil) {
             NSLog(@"[FlutterInappPurchase] products request failed with error: %@", error);
-            [self.fetchProducts removeObjectForKey:key];
-            [self.activeProductRequests removeObjectForKey:key];
+            [self clearFetchProductsRequestForKey:key];
             result([FlutterError
                     errorWithCode:[self standardErrorCode:(int)error.code]
                     message:[self englishErrorCodeDescription:(int)error.code]
@@ -329,8 +359,7 @@
         NSLog(@"[FlutterInappPurchase] products response: %lu valid, %lu invalid",
               (unsigned long)response.products.count,
               (unsigned long)response.invalidProductIdentifiers.count);
-        [self.fetchProducts removeObjectForKey:key];
-        [self.activeProductRequests removeObjectForKey:key];
+        [self clearFetchProductsRequestForKey:key];
 
         for (SKProduct* prod in response.products) {
             [self addProduct:prod];
@@ -787,8 +816,7 @@
             if (result == nil) return;
 
             NSLog(@"[FlutterInappPurchase] products request finished without response");
-            [self.fetchProducts removeObjectForKey:key];
-            [self.activeProductRequests removeObjectForKey:key];
+            [self clearFetchProductsRequestForKey:key];
             result(@[]);
         });
         return;
